@@ -1,3 +1,4 @@
+# Manual hex values that correspond to latching a single output number
 code = bytearray([
     # all pins on register b are output
     0xa9, 0xff,
