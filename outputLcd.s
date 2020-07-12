@@ -20,6 +20,8 @@ RS = %00100000
     jsr lcd_instruction
     lda #%00000110 ; Write left to right, don't shift
     jsr lcd_instruction
+    lda #%00000001 ; Clear display
+    jsr lcd_instruction
 
     ; Write letter
     lda #"y"
