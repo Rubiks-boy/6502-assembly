@@ -1,10 +1,10 @@
+; Outputs a message to the LCD using the LCD's 4 bit mode
+; On the W65C22, assumes E, RW, and RS are on port b alongside the 4 data pins
 PORTB = $6000
 PORTA = $6001
 DDRB = $6002
 DDRA = $6003
-; E =  %10000000
-; RW = %01000000
-; RS = %00100000
+
 LCD_DATA = %11110000
 E =  %00001000
 RW = %00000100
@@ -13,32 +13,12 @@ RS = %00000010
     .org $8000
 
 reset:
-    jsr lcd_setup
-
-; print message to the lcd
-    ldy #0
-print:
-    lda message,y
-    beq loop
-    jsr print_char
-    iny
-    jmp print
-
-loop:
-; do nothing
-    jmp loop
-
-message: .asciiz "ya YEET!"
-
-set_output:
-; Sets pins corresponding to LCD to output
-    lda #$ff
-    sta DDRB
-    rts
 
 lcd_setup:
 ; sets up the lcd (sets correct mode, turns on display, etc)
-    jsr set_output
+    ; set pins on portb as outputs
+    lda #$ff
+    sta DDRB
 
     ; Set to 4 bit mode
     ; In the event the cpu was reset, set to 8 bit
@@ -58,16 +38,62 @@ lcd_setup:
     lda #%00000001 ; Clear display
     jsr lcd_instruction
 
-pulse_e:
-; maintains values of RS, RW, and 4 data pins passed 
-; in from reg A and pulses the enable signal
-; will also try reading in port b to reg x
-    sta PORTB
-    ora #E
-    sta PORTB
-    ldx PORTB
-    and #(RW|RS|LCD_DATA)
-    sta PORTB
+print_message:
+; print message to the lcd
+    ldy #0
+print_iter:
+    lda message,y
+    beq loop
+    sec
+    jsr send_lcd_byte_cmd
+    iny
+    jmp print_iter
+
+loop:
+; do nothing
+    jmp loop
+
+message: .asciiz "ya YEET!"
+
+lcd_instruction:
+    clc
+    jsr send_lcd_byte_cmd
+    rts
+
+send_lcd_byte_cmd:
+; sends the byte in reg A to the lcd
+; uses carry bit to determine whether to set RS
+    ; wait for lcd to be ready
+    pha
+    jsr lcd_wait
+    pla
+
+    ; save other half of cmd & carry bit for later
+    php ; (gets overriden by asl)
+    pha ; (gets overridden when extracting first half)
+
+    ; send first half of instruction
+    and #LCD_DATA
+
+    jsr send_lcd_cmd
+
+    ; send second half of instruction
+    pla ; get second half back
+    asl ; move into 4 highest bits
+    asl
+    asl
+    asl
+    plp ; get carry bit again
+    jsr send_lcd_cmd
+    rts
+
+send_lcd_cmd:
+; sends whatever's in the top 4 bits of the A reg to the lcd
+; if carry bit set, also sends RS
+    bcc skip_rs
+    ora #(RS)
+skip_rs:
+    jsr pulse_e
     rts
 
 lcd_wait:
@@ -88,85 +114,21 @@ lcd_busy:
     and #%10000000
     bne lcd_busy
 
-    ; reset things back to output before leaving loop
-    jsr set_output
+    ; reset things back to output before leaving subroutine
+    lda #$ff
+    sta DDRB
     rts
 
-lcd_instruction:
-    ; wait for lcd to be ready
-    pha
-    jsr lcd_wait
-    pla
-
-    ; save other half for later
-    pha
-
-    ; send first half of instruction
-    and #LCD_DATA
-    jsr pulse_e
-
-    ; send second half of instruction
-    pla
-    asl
-    asl
-    asl
-    asl
-    jsr pulse_e
-    rts
-
-print_char:
-    ; wait for lcd to be ready
-    pha
-    jsr lcd_wait
-    pla
-
-    ; save other half for later
-    pha
-
-    ; send first half of instruction
-    and #LCD_DATA
-    ora #(RS)
-    jsr pulse_e
-
-    ; send second half of instruction
-    pla
-    asl
-    asl
-    asl
-    asl
-    ora #RS
-    jsr pulse_e
-    rts
-
-send_lcd_byte:
-; sends the byte in reg A to the lcd
-; if the carry bit is set, will also send RS
-    ; wait for lcd to be ready
-    pha
-    jsr lcd_wait
-    pla
-
-    ; save other half for later
-    pha
-
-    ; send first half of instruction
-    and #LCD_DATA
-
-    bcc skip_rs
-    ora #(RS)
-skip_rs:
-    jsr pulse_e
-
-    ; send second half of instruction
-    pla
-    asl
-    asl
-    asl
-    asl
-    bcc skip_rs2
-    ora #(RS)
-skip_rs2:
-    jsr pulse_e
+pulse_e:
+; maintains values of RS, RW, and 4 data pins passed 
+; in from reg A and pulses the enable signal
+; will also try reading in port b to reg x
+    sta PORTB
+    ora #E
+    sta PORTB
+    ldx PORTB
+    and #(RW|RS|LCD_DATA)
+    sta PORTB
     rts
 
     .org $fffc
