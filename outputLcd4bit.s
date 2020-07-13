@@ -34,24 +34,18 @@ reset:
     lda #%00000001 ; Clear display
     jsr lcd_instruction
 
-    ; Write letter
-    lda #"y"
+    ldy #0
+print:
+    lda message,y
+    beq loop
     jsr print_char
-    lda #"a"
-    jsr print_char
-    lda #" "
-    jsr print_char
-    lda #"Y"
-    jsr print_char
-    lda #"E"
-    jsr print_char
-    lda #"E"
-    jsr print_char
-    lda #"T"
-    jsr print_char
+    iny
+    jmp print
 
 loop:
     jmp loop
+
+message: .asciiz "ya YEET!"
 
 pulse_e:
     ; pulse enable signal
