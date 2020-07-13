@@ -13,24 +13,9 @@ RS = %00000010
     .org $8000
 
 reset:
-    ; Sets pins corresponding to LCD to output
-    lda #$ff
-    sta DDRB
+    jsr lcd_setup
 
-    ; for setting 4 bit mode, the very first instruction
-    ; is read as an 8 bit instruction & must be repeated
-    lda #%00100000 ; Set 4-bit
-    jsr pulse_e
-
-    lda #%00101000 ; Set 4-bit, 2 line, 5x8
-    jsr lcd_instruction
-    lda #%00001110 ; Disp on with cursor, doesn't blink
-    jsr lcd_instruction
-    lda #%00000110 ; Write left to right, don't shift
-    jsr lcd_instruction
-    lda #%00000001 ; Clear display
-    jsr lcd_instruction
-
+; print message to the lcd
     ldy #0
 print:
     lda message,y
@@ -40,50 +25,67 @@ print:
     jmp print
 
 loop:
+; do nothing
     jmp loop
 
 message: .asciiz "ya YEET!"
 
+set_output:
+; Sets pins corresponding to LCD to output
+    lda #$ff
+    sta DDRB
+    rts
+
+lcd_setup:
+; sets up the lcd (sets correct mode, turns on display, etc)
+    jsr set_output
+
+    ; for setting 4 bit mode, the very first instruction
+    ; is read as an 8 bit instruction & must be repeated
+    lda #%00100000 ; Set 4-bit
+    jsr pulse_e
+
+    lda #%00101000 ; Set 4-bit, 2 line, 5x8
+    jsr lcd_instruction
+    lda #%00001100 ; Disp on with cursor, doesn't blink
+    jsr lcd_instruction
+    lda #%00000110 ; Write left to right, don't shift
+    jsr lcd_instruction
+    lda #%00000001 ; Clear display
+    jsr lcd_instruction
+
 pulse_e:
-    ; takes values of RS, RW, and 4 data pins from reg A
-    ; and pulses the enable signal
+; maintains values of RS, RW, and 4 data pins passed 
+; in from reg A and pulses the enable signal
+; will also try reading in port b to reg x
     sta PORTB
     ora #E
     sta PORTB
+    ldx PORTB
     and #(RW|RS|LCD_DATA)
     sta PORTB
     rts
 
 lcd_wait:
+; loops until the lcd is ready for another command
     ; set lcd data pins as input
     lda #$0f
     sta DDRB
 lcd_busy:
-    ; read first half of busy flag
-    ldx #RW
-    stx PORTB
-    ldx #(RW|E)
-    stx PORTB
-    lda PORTB
-
-    ; tell lcd to output second half of busy flag
-    ; disregard this output, since it's address
-    ; lines we don't care about
-    ldx #RW
-    stx PORTB
-    ldx #(RW|E)
-    stx PORTB
+    ; read busy flag & store the first half of the input
+    ; (the part that contains the flag) onto the stack
+    lda #RW
+    jsr pulse_e
+    phx
+    jsr pulse_e
 
     ; see if lcd is busy or not; jump accordingly
+    pla
     and #%10000000
     bne lcd_busy
 
-    ; if lcd is not busy, reset things back
-    ; port b output
-    lda #RW
-    sta PORTB
-    lda #$ff
-    sta DDRB
+    ; reset things back to output before leaving loop
+    jsr set_output
     rts
 
 lcd_instruction:
@@ -129,6 +131,37 @@ print_char:
     asl
     asl
     ora #RS
+    jsr pulse_e
+    rts
+
+send_lcd_byte:
+; sends the byte in reg A to the lcd
+; if the carry bit is set, will also send RS
+    ; wait for lcd to be ready
+    pha
+    jsr lcd_wait
+    pla
+
+    ; save other half for later
+    pha
+
+    ; send first half of instruction
+    and #LCD_DATA
+
+    bcc skip_rs
+    ora #(RS)
+skip_rs:
+    jsr pulse_e
+
+    ; send second half of instruction
+    pla
+    asl
+    asl
+    asl
+    asl
+    bcc skip_rs2
+    ora #(RS)
+skip_rs2:
     jsr pulse_e
     rts
 
