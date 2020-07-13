@@ -40,8 +40,12 @@ lcd_setup:
 ; sets up the lcd (sets correct mode, turns on display, etc)
     jsr set_output
 
-    ; for setting 4 bit mode, the very first instruction
-    ; is read as an 8 bit instruction & must be repeated
+    ; Set to 4 bit mode
+    ; In the event the cpu was reset, set to 8 bit
+    ; and then back to 4 bit so that we aren't
+    ; off by half instructions
+    lda #%00110000 ; Set 8-bit
+    jsr lcd_instruction
     lda #%00100000 ; Set 4-bit
     jsr pulse_e
 
