@@ -2,19 +2,30 @@ PORTB = $6000
 PORTA = $6001
 DDRB = $6002
 DDRA = $6003
-E = %10000000
+E =  %10000000
 RW = %01000000
 RS = %00100000
+; LCD_DATA = %11110000
+; E =  %00001000
+; RW = %00000100
+; RS = %00000010
 
     .org $8000
 
+reset:
     ; Sets pins corresponding to LCD to output
     lda #$ff
     sta DDRB
     lda #%11100000
     sta DDRA
 
-    lda #%00101000 ; Set 4-bit, 2 lint, 5x8
+    ; for setting 4 bit mode, the very first instruction
+    ; is read as an 8 bit instruction & must be repeated
+    lda #%00100000 ; Set 4-bit
+    sta PORTB
+    jsr pulse_e
+
+    lda #%00101000 ; Set 4-bit, 2 line, 5x8
     jsr lcd_instruction
     lda #%00001110 ; Disp on with cursor, doesn't blink
     jsr lcd_instruction
@@ -40,8 +51,6 @@ RS = %00100000
     jsr print_char
 
 loop:
-    sta $6000
-    rol
     jmp loop
 
 pulse_e:
@@ -64,7 +73,37 @@ pulse_rs_e:
     stx PORTA
     rts
 
+lcd_wait:
+    pha
+    ; port b input
+    lda #$00
+    sta DDRB
+lcd_busy:
+    ; read busy flag
+    ldx #RW
+    stx PORTA
+    ldx #(RW|E)
+    stx PORTA
+    lda PORTB
+
+    ldx #RW
+    stx PORTA
+    ldx #(RW|E)
+    stx PORTA
+
+    and #%10000000
+    bne lcd_busy
+
+    ; port b output
+    lda #RW
+    sta PORTA
+    lda #$ff
+    sta DDRB
+    pla
+    rts
+
 lcd_instruction:
+    jsr lcd_wait
     sta PORTB
     jsr pulse_e
     asl
@@ -76,6 +115,7 @@ lcd_instruction:
     rts
 
 print_char:
+    jsr lcd_wait
     sta PORTB
     jsr pulse_rs_e
     asl
@@ -87,5 +127,16 @@ print_char:
     rts
 
     .org $fffc
-    .word $8000
+    .word reset
     .word $0000
+
+
+; given something in a register:
+; copy left half into x register
+; write that
+; and with enable pin
+; write that
+; go back to without enable pin
+; write that
+; shift left x4
+; repeat write/enable stuff
